@@ -24,16 +24,11 @@ import (
 	"github.com/ossf/scorecard/cron/config"
 )
 
-func StartDataTransferJob(ctx context.Context, bucketURL, filename string) error {
+func StartDataTransferJob(ctx context.Context, bucketURL, fileURI string) error {
 	projectID, err := config.GetProjectID()
 	if err != nil {
 		return fmt.Errorf("error getting ProjectId: %w", err)
 	}
-	bq, err := bigquery.NewClient(ctx, projectID)
-	if err != nil {
-		return fmt.Errorf("failed to create bigquery client: %w", err)
-	}
-
 	datasetName, err := config.GetBigQueryDataset()
 	if err != nil {
 		return fmt.Errorf("error getting BigQuery dataset: %w", err)
@@ -42,11 +37,16 @@ func StartDataTransferJob(ctx context.Context, bucketURL, filename string) error
 	if err != nil {
 		return fmt.Errorf("error getting BigQuery table: %w", err)
 	}
-	gcsRef := bigquery.NewGCSReference(fmt.Sprintf("%s/%s", bucketURL, filename))
+
+	gcsRef := bigquery.NewGCSReference(fmt.Sprintf("%s/%s", bucketURL, fileURI))
 	gcsRef.AutoDetect = true
 	gcsRef.SourceFormat = bigquery.JSON
-	dataset := bq.Dataset(datasetName)
-	loader := dataset.Table(tableName).LoaderFrom(gcsRef)
+
+	bq, err := bigquery.NewClient(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("failed to create bigquery client: %w", err)
+	}
+	loader := bq.Dataset(datasetName).Table(tableName).LoaderFrom(gcsRef)
 	loader.WriteDisposition = bigquery.WriteTruncate
 
 	job, err := loader.Run(ctx)
@@ -54,5 +54,12 @@ func StartDataTransferJob(ctx context.Context, bucketURL, filename string) error
 		return fmt.Errorf("failed to create load job: %w", err)
 	}
 	log.Printf("Job created: %s", job.ID())
+	status, err := job.Wait(ctx)
+	if err != nil {
+		return fmt.Errorf("error running bigquery load job: %w", err)
+	}
+	if err := status.Err(); err != nil {
+		return fmt.Errorf("bigquery load job returned error status: %w", err)
+	}
 	return nil
 }

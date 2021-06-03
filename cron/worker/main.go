@@ -157,7 +157,7 @@ func main() {
 	// This will reduce usage of the API.
 	delete(checksToRun, checks.CheckBranchProtection)
 
-	for {
+	//for {
 		req, err := subscriber.SynchronousPull()
 		if err != nil {
 			panic(err)
@@ -165,7 +165,7 @@ func main() {
 		log.Print("Received message from subscription")
 		if req == nil {
 			log.Print("subscription returned nil message during Receive, exiting")
-			break
+			//break
 		}
 		if err := processRequest(ctx, req, checksToRun, bucketURL, httpClient, githubClient, graphClient); err != nil {
 			// Nack the message so that another worker can retry.
@@ -174,7 +174,7 @@ func main() {
 		// nolint: errcheck // flushes buffer
 		logger.Sync()
 		subscriber.Ack()
-	}
+	//}
 	err = subscriber.Close()
 	if err != nil {
 		panic(err)

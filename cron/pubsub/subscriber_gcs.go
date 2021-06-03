@@ -37,6 +37,7 @@ const (
 type gcsSubscriber struct {
 	ctx             context.Context
 	done            chan bool
+	wait		chan bool
 	client          *pubsub.SubscriberClient
 	subscriptionURL string
 	recvdAckID      string
@@ -56,8 +57,15 @@ func createGCSSubscriber(ctx context.Context, subscriptionURL string) (*gcsSubsc
 	}, nil
 }
 
+func (subscriber* gcsSubscriber) printAndClose() {
+	log.Print("Ending the thread for: %s", subscriber.recvdAckID)
+}
+
 func (subscriber *gcsSubscriber) extendAckDeadline() {
 	delay := 0 * time.Second
+	subscriber.wait = make(chan bool)
+	defer close(subscriber.wait)
+	defer subscriber.printAndClose()
 	for {
 		select {
 		case <-subscriber.ctx.Done():
@@ -65,6 +73,7 @@ func (subscriber *gcsSubscriber) extendAckDeadline() {
 		case <-subscriber.done:
 			return
 		case <-time.After(delay):
+			log.Printf("extending deadline for: %s", subscriber.recvdAckID)
 			ackDeadline := ackDeadlineExtensionInSec * time.Second
 			err := subscriber.client.ModifyAckDeadline(subscriber.ctx, &pubsubpb.ModifyAckDeadlineRequest{
 				Subscription:       subscriber.subscriptionURL,
@@ -106,6 +115,11 @@ func (subscriber *gcsSubscriber) SynchronousPull() (*data.ScorecardBatchRequest,
 		log.Fatalf("expected to receive max %d messages, got %d", maxMessagesToPull, numReceivedMessages)
 	}
 
+<<<<<<< HEAD
+=======
+	log.Printf("Received message with ID: %s", msgToProcess.AckId)
+
+>>>>>>> pubsub
 	subscriber.recvdAckID = msgToProcess.AckId
 	subscriber.done = make(chan bool)
 	// Continuously notify the server that processing is still happening on this message.
@@ -115,11 +129,14 @@ func (subscriber *gcsSubscriber) SynchronousPull() (*data.ScorecardBatchRequest,
 }
 
 func (subscriber *gcsSubscriber) Ack() {
+	log.Printf("Ack-ing: %s", subscriber.recvdAckID)
 	err := subscriber.client.Acknowledge(subscriber.ctx, &pubsubpb.AcknowledgeRequest{
 		Subscription: subscriber.subscriptionURL,
 		AckIds:       []string{subscriber.recvdAckID},
 	})
 	close(subscriber.done)
+	// Wait for thread to close
+	<-subscriber.wait
 	if err != nil {
 		log.Fatal(err)
 	}
